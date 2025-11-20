@@ -42,6 +42,7 @@ const ItemDetails = () => {
   const [item, setItem] = useState<ItemDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [showVerification, setShowVerification] = useState(false);
+  const [chatRequestStatus, setChatRequestStatus] = useState<any>(null);
 
   /**
    * normalizeFetchedItem handles cases where raw.user can be:
@@ -127,6 +128,10 @@ const ItemDetails = () => {
         setItem(null);
       } else {
         setItem(normalized);
+        // Fetch chat request status if user is logged in
+        if (user && routeId) {
+          fetchChatRequestStatus(routeId);
+        }
       }
     } catch (error: any) {
       console.error('fetchItem error:', error);
@@ -134,6 +139,16 @@ const ItemDetails = () => {
       setItem(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChatRequestStatus = async (itemId: string) => {
+    try {
+      const response = await api.get(`/chat-requests/status/${itemId}`);
+      setChatRequestStatus(response.data);
+    } catch (error: any) {
+      console.error('fetchChatRequestStatus error:', error);
+      // Silent fail - not critical
     }
   };
 
@@ -171,7 +186,20 @@ const ItemDetails = () => {
     }
 
     if (item.verificationQuestion) {
-      setShowVerification(true);
+      // Check if user has already answered this question
+      if (chatRequestStatus?.answered) {
+        // User already answered - check if it was correct
+        if (chatRequestStatus?.answerCorrect) {
+          showToast('Chat request already sent! Check your messages.', 'info');
+          navigate('/messages');
+        } else {
+          // User answered but was incorrect - show modal again to retry
+          setShowVerification(true);
+        }
+      } else {
+        // User hasn't answered yet - show verification modal
+        setShowVerification(true);
+      }
       return;
     }
 
@@ -315,6 +343,8 @@ const ItemDetails = () => {
           onSuccess={() => {
             setShowVerification(false);
             showToast('Answer verified! Chat request sent to owner.', 'success');
+            // Refresh chat request status
+            fetchChatRequestStatus(String(item.id ?? item._id ?? ''));
           }}
         />
       )}
